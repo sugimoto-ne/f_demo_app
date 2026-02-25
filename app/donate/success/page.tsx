@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase-client';
 
-export default function DonateSuccessPage() {
+export const dynamic = 'force-dynamic';
+
+function DonateSuccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id');
@@ -120,5 +122,17 @@ export default function DonateSuccessPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function DonateSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50">
+        <div className="text-gray-600">読み込み中...</div>
+      </div>
+    }>
+      <DonateSuccessContent />
+    </Suspense>
   );
 }
