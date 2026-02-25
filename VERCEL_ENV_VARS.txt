@@ -1,0 +1,46 @@
+# Vercel環境変数設定用
+# このファイルの内容をVercelダッシュボードにコピー&ペーストしてください
+
+# ============================================
+# Firebase Client SDK (6個)
+# ============================================
+
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyCOeeMTeewANT1q_cayieRNdrZhgB7LDzg
+
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=udemy-sns-b9e40.firebaseapp.com
+
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=udemy-sns-b9e40
+
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=udemy-sns-b9e40.firebasestorage.app
+
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=844059874285
+
+NEXT_PUBLIC_FIREBASE_APP_ID=1:844059874285:web:338405fbda4353b8cf8de4
+
+# ============================================
+# Firebase Admin SDK (1個)
+# ============================================
+#
+# 以下のコマンドを実行してサービスアカウントJSONを1行にしてください：
+# cat udemy-sns-b9e40-firebase-adminsdk-fbsvc-3728d79e27.json | jq -c
+#
+# または手動で改行を削除して1行にしてください
+#
+
+FIREBASE_SERVICE_ACCOUNT=ここにサービスアカウントJSONを1行で貼り付け
+
+# ============================================
+# Ko-fi Verification Token (オプション)
+# ============================================
+
+KOFI_VERIFICATION_TOKEN=
+
+# ============================================
+# 設定方法
+# ============================================
+#
+# 1. Vercelダッシュボード > Settings > Environment Variables
+# 2. 上記の各変数を追加
+# 3. Environment: Production, Preview, Development 全てにチェック
+# 4. 「Save」をクリック
+#
