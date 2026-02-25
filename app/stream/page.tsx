@@ -63,7 +63,7 @@ export default function StreamPage() {
     const q = query(
       collection(db, 'superchats'),
       where('streamCode', '==', streamCode),
-      orderBy('createdAt', 'desc'),
+      // orderBy('createdAt', 'desc'), // TODO: インデックス作成完了後に有効化
       limit(50)
     );
 
@@ -72,6 +72,13 @@ export default function StreamPage() {
         id: doc.id,
         ...doc.data(),
       })) as Superchat[];
+
+      // クライアント側でソート（インデックス作成までの一時対応）
+      chats.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis?.() || 0;
+        const timeB = b.createdAt?.toMillis?.() || 0;
+        return timeB - timeA; // 降順
+      });
 
       setSuperchats(chats);
     }, (error) => {
