@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, addDoc, query, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, limit, getDocs, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase-client';
 
 interface Superchat {
   id: string;
   donorName: string;
+  nickname?: string;
   amount: string;
   message: string;
   currency: string;
@@ -48,33 +49,37 @@ export default function StreamPage() {
         if (userDoc.exists()) {
           setUserDisplayName(userDoc.data().displayName || user.email?.split('@')[0] || 'ゲスト');
         }
-
-        loadSuperchats();
       }
       setLoading(false);
     });
     return () => unsubscribe();
   }, [router]);
 
-  const loadSuperchats = async () => {
-    try {
-      const q = query(
-        collection(db, 'superchats'),
-        orderBy('createdAt', 'desc'),
-        limit(50)
-      );
-      const snapshot = await getDocs(q);
+  // リアルタイムでスーパーチャットを監視
+  useEffect(() => {
+    if (loading) return;
 
+    // 配信コード「ST001」でフィルタリング
+    const q = query(
+      collection(db, 'superchats'),
+      where('streamCode', '==', streamCode),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const chats = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
       })) as Superchat[];
 
       setSuperchats(chats);
-    } catch (error) {
-      console.error('Failed to load superchats:', error);
-    }
-  };
+    }, (error) => {
+      console.error('Failed to listen to superchats:', error);
+    });
+
+    return () => unsubscribe();
+  }, [loading]);
 
   const handleGenerateCode = async () => {
     if (!userDisplayName) {
@@ -188,12 +193,10 @@ export default function StreamPage() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-gray-800">スーパーチャット</h3>
-                <button
-                  onClick={loadSuperchats}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  更新
-                </button>
+                <span className="flex items-center text-xs text-gray-500">
+                  <span className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span>
+                  リアルタイム
+                </span>
               </div>
 
               <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -209,7 +212,7 @@ export default function StreamPage() {
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-bold text-sm text-gray-800">
-                          {sc.donorName}
+                          {sc.nickname || sc.donorName}
                         </span>
                         <span className="text-sm font-bold text-orange-600">
                           {sc.currency} {sc.amount}
