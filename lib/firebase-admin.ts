@@ -22,6 +22,6 @@ export function getFirebaseAdmin() {
 
   return {
     auth: getAuth(app),
-    db: getFirestore(app),
+    db: getFirestore(app, 'demo'), // データベース名「demo」を指定
   };
 }
