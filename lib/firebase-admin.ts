@@ -6,10 +6,12 @@ let app: App;
 
 export function getFirebaseAdmin() {
   if (getApps().length === 0) {
-    // 環境変数から認証情報を取得（本番環境用）
-    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
-      ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-      : require('../udemy-sns-b9e40-firebase-adminsdk-fbsvc-3728d79e27.json');
+    // 環境変数から認証情報を取得
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+      throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is not set');
+    }
+
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
     app = initializeApp({
       credential: cert(serviceAccount),
