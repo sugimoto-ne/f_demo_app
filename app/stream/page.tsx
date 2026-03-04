@@ -4,11 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { collection, addDoc, query, where, orderBy, limit, getDocs, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase-client';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements } from '@stripe/react-stripe-js';
-import StripePaymentForm from '@/app/components/StripePaymentForm';
-
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 interface Superchat {
   id: string;
@@ -30,10 +25,11 @@ function generateToken(): string {
   return token;
 }
 
-type PaymentProvider = 'kofi' | 'stripe' | 'both';
+type PaymentProvider = 'kofi' | 'stripe' | 'bmc' | 'all';
 
 interface PaymentSettings {
   kofiUsername: string;
+  bmcUsername: string;
   paymentProvider: PaymentProvider;
 }
 
@@ -41,13 +37,16 @@ export default function StreamPage() {
   const [user, setUser] = useState<any>(null);
   const [userDisplayName, setUserDisplayName] = useState<string>('');
   const [kofiCode, setKofiCode] = useState<string>('');
-  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [bmcCode, setBmcCode] = useState<string>('');
+  const [showKofiCodeModal, setShowKofiCodeModal] = useState(false);
+  const [showBmcCodeModal, setShowBmcCodeModal] = useState(false);
   const [showStripeModal, setShowStripeModal] = useState(false);
   const [superchats, setSuperchats] = useState<Superchat[]>([]);
   const [loading, setLoading] = useState(true);
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>({
     kofiUsername: 'sugimo_ne',
-    paymentProvider: 'both',
+    bmcUsername: '',
+    paymentProvider: 'all',
   });
   const router = useRouter();
 
@@ -55,7 +54,6 @@ export default function StreamPage() {
   const [stripeDonorName, setStripeDonorName] = useState('');
   const [stripeMessage, setStripeMessage] = useState('');
   const [stripeAmount, setStripeAmount] = useState(500);
-  const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null);
   const [stripeLoading, setStripeLoading] = useState(false);
 
   // 配信の短縮コード（本来はDBから取得、今はデモ用に固定）
@@ -118,7 +116,7 @@ export default function StreamPage() {
     return () => unsubscribe();
   }, [loading]);
 
-  const handleGenerateCode = async () => {
+  const handleGenerateKofiCode = async () => {
     if (!userDisplayName) {
       alert('表示名が取得できませんでした');
       return;
@@ -139,23 +137,60 @@ export default function StreamPage() {
         createdAt: new Date(),
       });
 
-      setShowCodeModal(true);
+      setShowKofiCodeModal(true);
     } catch (error) {
-      console.error('Failed to generate code:', error);
+      console.error('Failed to generate Ko-fi code:', error);
+      alert('コードの生成に失敗しました。もう一度お試しください。');
+    }
+  };
+
+  const handleGenerateBmcCode = async () => {
+    if (!userDisplayName) {
+      alert('表示名が取得できませんでした');
+      return;
+    }
+
+    try {
+      // BMC用のコードを生成（配信コード-表示名）
+      const code = `${streamCode}-${userDisplayName}`;
+      setBmcCode(code);
+
+      // pending_donationsに保存（照合用）
+      await addDoc(collection(db, 'pending_donations'), {
+        streamCode: streamCode,
+        displayName: userDisplayName,
+        bmcCode: code,
+        userId: user?.uid || null,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+      });
+
+      setShowBmcCodeModal(true);
+    } catch (error) {
+      console.error('Failed to generate BMC code:', error);
       alert('コードの生成に失敗しました。もう一度お試しください。');
     }
   };
 
   const copyKofiCode = () => {
     navigator.clipboard.writeText(kofiCode);
-    alert('コードをコピーしました！');
+    alert('Ko-fiコードをコピーしました！');
   };
 
-  const handleCloseModal = () => {
-    setShowCodeModal(false);
+  const copyBmcCode = () => {
+    navigator.clipboard.writeText(bmcCode);
+    alert('BMCコードをコピーしました！');
   };
 
-  const handleOpenStripeModal = async () => {
+  const handleCloseKofiModal = () => {
+    setShowKofiCodeModal(false);
+  };
+
+  const handleCloseBmcModal = () => {
+    setShowBmcCodeModal(false);
+  };
+
+  const handleOpenStripeCheckout = async () => {
     if (!stripeDonorName.trim()) {
       alert('お名前を入力してください');
       return;
@@ -169,7 +204,7 @@ export default function StreamPage() {
     setStripeLoading(true);
 
     try {
-      const response = await fetch('/api/stripe/payment-intent', {
+      const response = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -183,32 +218,23 @@ export default function StreamPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Payment intent creation failed');
+        throw new Error(data.error || 'Checkout session creation failed');
       }
 
-      setStripeClientSecret(data.clientSecret);
-      setStripeLoading(false);
+      // Stripe Checkoutページにリダイレクト
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('Checkout URL not found');
+      }
     } catch (error: any) {
-      console.error('Payment intent error:', error);
+      console.error('Stripe checkout error:', error);
       alert(`決済の準備に失敗しました: ${error.message}`);
       setStripeLoading(false);
       setShowStripeModal(false);
     }
   };
 
-  const handleStripeSuccess = () => {
-    alert('投げ銭ありがとうございます！配信画面に表示されます。');
-    setShowStripeModal(false);
-    setStripeClientSecret(null);
-    setStripeDonorName('');
-    setStripeMessage('');
-    setStripeAmount(500);
-  };
-
-  const handleStripeCancel = () => {
-    setShowStripeModal(false);
-    setStripeClientSecret(null);
-  };
 
   if (loading) {
     return (
@@ -275,16 +301,25 @@ export default function StreamPage() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
-                    {(paymentSettings.paymentProvider === 'kofi' || paymentSettings.paymentProvider === 'both') && (
+                    {(paymentSettings.paymentProvider === 'kofi' || paymentSettings.paymentProvider === 'all') && (
                       <button
-                        onClick={handleGenerateCode}
+                        onClick={handleGenerateKofiCode}
                         className="px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg font-medium hover:opacity-90 transition flex items-center justify-center space-x-2"
                       >
                         <span>☕</span>
                         <span>Ko-fiで投げ銭</span>
                       </button>
                     )}
-                    {(paymentSettings.paymentProvider === 'stripe' || paymentSettings.paymentProvider === 'both') && (
+                    {(paymentSettings.paymentProvider === 'bmc' || paymentSettings.paymentProvider === 'all') && (
+                      <button
+                        onClick={handleGenerateBmcCode}
+                        className="px-6 py-3 bg-gradient-to-r from-amber-400 to-yellow-600 text-white rounded-lg font-medium hover:opacity-90 transition flex items-center justify-center space-x-2"
+                      >
+                        <span>☕</span>
+                        <span>BMCで投げ銭</span>
+                      </button>
+                    )}
+                    {(paymentSettings.paymentProvider === 'stripe' || paymentSettings.paymentProvider === 'all') && (
                       <button
                         onClick={() => setShowStripeModal(true)}
                         className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center justify-center space-x-2"
@@ -340,7 +375,7 @@ export default function StreamPage() {
       </div>
 
       {/* Ko-fiコード表示モーダル */}
-      {showCodeModal && kofiCode && (
+      {showKofiCodeModal && kofiCode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
             <h2 className="text-xl font-bold mb-2 text-gray-800">Ko-fiニックネーム欄に入力</h2>
@@ -397,7 +432,74 @@ export default function StreamPage() {
             </a>
 
             <button
-              onClick={handleCloseModal}
+              onClick={handleCloseKofiModal}
+              className="w-full py-2 text-gray-700 hover:text-gray-900 font-medium"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Buy Me a Coffeeコード表示モーダル */}
+      {showBmcCodeModal && bmcCode && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h2 className="text-xl font-bold mb-2 text-gray-800">BMCサポーター名に入力</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              以下のコードをコピーして、Buy Me a Coffeeの<strong className="text-red-600">Name欄</strong>に貼り付けてください
+            </p>
+
+            <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4 mb-4">
+              <p className="text-sm font-bold text-yellow-800 mb-2">⚠️ 重要</p>
+              <p className="text-xs text-yellow-700">
+                メッセージ欄ではなく、<strong>Name欄（サポーター名）</strong>に入力してください
+              </p>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <code className="text-xl font-mono font-bold text-gray-800">{bmcCode}</code>
+                <button
+                  onClick={copyBmcCode}
+                  className="ml-3 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition flex-shrink-0"
+                >
+                  📋 コピー
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-xs text-blue-800 mb-2">
+                <strong>あなたの情報：</strong>
+              </p>
+              <div className="bg-white rounded p-2 text-xs space-y-1">
+                <p className="text-gray-600">配信コード：<code className="font-mono font-bold">{streamCode}</code></p>
+                <p className="text-gray-600">表示名：<code className="font-mono font-bold">{userDisplayName}</code></p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+              <p className="text-xs text-blue-800 mb-2">
+                <strong>Buy Me a Coffee入力例：</strong>
+              </p>
+              <div className="bg-white rounded p-2 text-xs">
+                <p className="text-gray-600">Name欄：<code className="font-mono font-bold">{bmcCode}</code></p>
+                <p className="text-gray-600">Message欄：Great stream! Keep it up!</p>
+              </div>
+            </div>
+
+            <a
+              href={`https://www.buymeacoffee.com/${paymentSettings.bmcUsername}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full text-center bg-gradient-to-r from-amber-400 to-yellow-600 text-white py-3 rounded-lg font-bold hover:opacity-90 transition mb-3"
+            >
+              Buy Me a Coffeeで投げ銭する
+            </a>
+
+            <button
+              onClick={handleCloseBmcModal}
               className="w-full py-2 text-gray-700 hover:text-gray-900 font-medium"
             >
               閉じる
@@ -408,106 +510,89 @@ export default function StreamPage() {
 
       {/* Stripe投げ銭モーダル */}
       {showStripeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 my-8 max-h-[calc(100vh-4rem)] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
             <h2 className="text-xl font-bold mb-2 text-gray-800">投げ銭する（デモ）</h2>
             <p className="text-sm text-gray-600 mb-4">
               Stripeのテストモードで決済体験ができます
             </p>
 
-            {!stripeClientSecret ? (
-              // Step 1: 名前・金額・メッセージ入力
-              <>
-                <div className="space-y-4 mb-6">
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">
-                      お名前 <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={stripeDonorName}
-                      onChange={(e) => setStripeDonorName(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="山田太郎"
-                      disabled={stripeLoading}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">
-                      金額（円）<span className="text-red-500">*</span>
-                    </label>
-                    <div className="grid grid-cols-4 gap-2 mb-2">
-                      {[100, 500, 1000, 5000].map((amount) => (
-                        <button
-                          key={amount}
-                          type="button"
-                          onClick={() => setStripeAmount(amount)}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                            stripeAmount === amount
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                          disabled={stripeLoading}
-                        >
-                          ¥{amount}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      type="number"
-                      value={stripeAmount}
-                      onChange={(e) => setStripeAmount(parseInt(e.target.value) || 0)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="100"
-                      min="100"
-                      disabled={stripeLoading}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">
-                      メッセージ（任意）
-                    </label>
-                    <textarea
-                      value={stripeMessage}
-                      onChange={(e) => setStripeMessage(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg h-20 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                      placeholder="応援メッセージを入力してください"
-                      disabled={stripeLoading}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleOpenStripeModal}
-                  disabled={stripeLoading || !stripeDonorName.trim() || stripeAmount < 100}
-                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition mb-3"
-                >
-                  {stripeLoading ? '準備中...' : '次へ（カード情報入力）'}
-                </button>
-
-                <button
-                  onClick={() => setShowStripeModal(false)}
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700">
+                  お名前 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={stripeDonorName}
+                  onChange={(e) => setStripeDonorName(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="山田太郎"
                   disabled={stripeLoading}
-                  className="w-full py-2 text-gray-700 hover:text-gray-900 font-medium disabled:opacity-50"
-                >
-                  キャンセル
-                </button>
-              </>
-            ) : (
-              // Step 2: カード情報入力（Stripe Elements）
-              <Elements stripe={stripePromise} options={{ clientSecret: stripeClientSecret }}>
-                <StripePaymentForm
-                  amount={stripeAmount}
-                  donorName={stripeDonorName}
-                  message={stripeMessage}
-                  streamCode={streamCode}
-                  onSuccess={handleStripeSuccess}
-                  onCancel={handleStripeCancel}
                 />
-              </Elements>
-            )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700">
+                  金額（円）<span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {[100, 500, 1000, 5000].map((amount) => (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() => setStripeAmount(amount)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                        stripeAmount === amount
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      disabled={stripeLoading}
+                    >
+                      ¥{amount}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  value={stripeAmount}
+                  onChange={(e) => setStripeAmount(parseInt(e.target.value) || 0)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="100"
+                  min="100"
+                  disabled={stripeLoading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700">
+                  メッセージ（任意）
+                </label>
+                <textarea
+                  value={stripeMessage}
+                  onChange={(e) => setStripeMessage(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg h-20 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  placeholder="応援メッセージを入力してください"
+                  disabled={stripeLoading}
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleOpenStripeCheckout}
+              disabled={stripeLoading || !stripeDonorName.trim() || stripeAmount < 100}
+              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition mb-3"
+            >
+              {stripeLoading ? 'Stripe決済ページへ移動中...' : 'Stripe決済ページへ'}
+            </button>
+
+            <button
+              onClick={() => setShowStripeModal(false)}
+              disabled={stripeLoading}
+              className="w-full py-2 text-gray-700 hover:text-gray-900 font-medium disabled:opacity-50"
+            >
+              キャンセル
+            </button>
           </div>
         </div>
       )}

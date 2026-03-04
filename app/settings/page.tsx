@@ -5,18 +5,22 @@ import { useRouter } from 'next/navigation';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase-client';
 
-type PaymentProvider = 'kofi' | 'stripe' | 'both';
+type PaymentProvider = 'kofi' | 'stripe' | 'bmc' | 'all';
 
 interface Settings {
   // Ko-fi設定
   kofiUsername: string;
   kofiVerificationToken: string;
 
+  // Buy Me a Coffee設定
+  bmcUsername: string;
+  bmcWebhookSecret: string;
+
   // Stripe設定
   stripePublishableKey: string;
   stripeSecretKey: string;
 
-  // どちらを使うか
+  // どれを使うか
   paymentProvider: PaymentProvider;
 }
 
@@ -30,9 +34,11 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({
     kofiUsername: '',
     kofiVerificationToken: '',
+    bmcUsername: '',
+    bmcWebhookSecret: '',
     stripePublishableKey: '',
     stripeSecretKey: '',
-    paymentProvider: 'both',
+    paymentProvider: 'all',
   });
 
   useEffect(() => {
@@ -123,7 +129,18 @@ export default function SettingsPage() {
                   onChange={(e) => setSettings({ ...settings, paymentProvider: e.target.value as PaymentProvider })}
                   className="w-4 h-4 text-blue-600"
                 />
-                <span className="text-gray-700">Ko-fiのみ（実際の投げ銭）</span>
+                <span className="text-gray-700">Ko-fiのみ</span>
+              </label>
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="paymentProvider"
+                  value="bmc"
+                  checked={settings.paymentProvider === 'bmc'}
+                  onChange={(e) => setSettings({ ...settings, paymentProvider: e.target.value as PaymentProvider })}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <span className="text-gray-700">Buy Me a Coffeeのみ</span>
               </label>
               <label className="flex items-center space-x-3 cursor-pointer">
                 <input
@@ -140,18 +157,18 @@ export default function SettingsPage() {
                 <input
                   type="radio"
                   name="paymentProvider"
-                  value="both"
-                  checked={settings.paymentProvider === 'both'}
+                  value="all"
+                  checked={settings.paymentProvider === 'all'}
                   onChange={(e) => setSettings({ ...settings, paymentProvider: e.target.value as PaymentProvider })}
                   className="w-4 h-4 text-blue-600"
                 />
-                <span className="text-gray-700">両方使う</span>
+                <span className="text-gray-700">全て使う</span>
               </label>
             </div>
           </div>
 
           {/* Ko-fi設定 */}
-          {(settings.paymentProvider === 'kofi' || settings.paymentProvider === 'both') && (
+          {(settings.paymentProvider === 'kofi' || settings.paymentProvider === 'all') && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-bold text-gray-800 mb-4">Ko-fi設定</h2>
               <div className="space-y-4">
@@ -186,8 +203,44 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {/* Buy Me a Coffee設定 */}
+          {(settings.paymentProvider === 'bmc' || settings.paymentProvider === 'all') && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">Buy Me a Coffee設定</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">
+                    Buy Me a Coffee ユーザー名
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.bmcUsername}
+                    onChange={(e) => setSettings({ ...settings, bmcUsername: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="例: yourname"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    https://www.buymeacoffee.com/<strong>yourname</strong> の部分
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">
+                    Webhook Secret（オプション）
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.bmcWebhookSecret}
+                    onChange={(e) => setSettings({ ...settings, bmcWebhookSecret: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="BMCダッシュボードから取得"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Stripe設定 */}
-          {(settings.paymentProvider === 'stripe' || settings.paymentProvider === 'both') && (
+          {(settings.paymentProvider === 'stripe' || settings.paymentProvider === 'all') && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-bold text-gray-800 mb-4">Stripe設定（テストモード）</h2>
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
