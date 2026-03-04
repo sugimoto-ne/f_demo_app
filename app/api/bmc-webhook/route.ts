@@ -15,11 +15,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Buy Me a Coffee webhook received:', bmcData);
+    console.log('Buy Me a Coffee webhook received:', JSON.stringify(bmcData, null, 2));
 
-    // Extract streamCode-nickname from supporter_name field
+    // Buy Me a Coffee payload structure: { type, data: { ... } }
+    const paymentData = bmcData.data || bmcData;
+
+    // Extract fields from the payload
+    const donorName = paymentData.supporter_name || 'Anonymous';
+    const donorEmail = paymentData.supporter_email || '';
+    const message = paymentData.support_note || paymentData.message || '';
+    const amount = paymentData.amount || paymentData.coffee_price || '0';
+    const transactionId = paymentData.transaction_id || paymentData.id || '';
+    const timestamp = paymentData.created_at || new Date().toISOString();
+
     // Format: "ST001-太郎"
-    const donorName = bmcData.supporter_name || '';
     const codeMatch = donorName.match(/^([A-Z0-9]+)-(.+)$/);
 
     let streamCode: string | null = null;
@@ -53,22 +62,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Save superchat to Firestore
+    // Save superchat to Firestore (using safe fallback values)
     await db.collection('superchats').add({
       streamCode: streamCode,
       streamId: streamId,
       nickname: nickname,
       userId: userId,
-      donorName: bmcData.supporter_name,
-      donorEmail: bmcData.supporter_email,
-      amount: bmcData.support_coffee_price || bmcData.support_coffees,
+      donorName: donorName,
+      donorEmail: donorEmail,
+      amount: String(amount), // Ensure it's a string
       currency: 'USD', // BMCは通常USD
-      message: bmcData.support_note || '',
-      bmcTransactionId: bmcData.support_id,
-      timestamp: bmcData.support_created_on,
+      message: message,
+      bmcTransactionId: transactionId,
+      timestamp: timestamp,
       isPublic: true,
       type: 'buymeacoffee',
-      url: bmcData.support_url || '',
+      url: paymentData.support_url || paymentData.url || '',
       createdAt: new Date(),
       matched: !!(streamCode && nickname),
       provider: 'buymeacoffee',
